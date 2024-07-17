@@ -1,0 +1,161 @@
+declare "edge" {
+	// -- ARGUMENTS
+	argument "otlp_http_endpoint" {
+		optional = true
+		default  = "127.0.0.1:4318"
+	}
+
+	argument "otlp_grpc_endpoint" {
+		optional = true
+		default  = "127.0.0.1:4317"
+	}
+
+	argument "otel_endpoint" {
+		optional = true
+		default  = "grafana-alloy.obs-grafana-agent:4317"
+	}
+
+	// -- ENDPOINTS
+	otelcol.receiver.otlp "default" {
+		grpc {
+			endpoint         = argument.otlp_grpc_endpoint.value
+			include_metadata = true
+		}
+
+		http {
+			endpoint         = argument.otlp_http_endpoint.value
+			include_metadata = true
+		}
+
+		output {
+			metrics = [otelcol.processor.memory_limiter.default.input]
+			traces  = [otelcol.processor.memory_limiter.default.input]
+		}
+	}
+
+	// receives Prometheus metrics, converts them to the OpenTelemetry metrics format,
+	otelcol.receiver.prometheus "default" {
+		output {
+			metrics = [otelcol.processor.memory_limiter.default.input]
+		}
+	}
+
+	// -- PROCESSORS
+	otelcol.processor.memory_limiter "default" {
+		check_interval = "10s"
+
+		limit = "2048MiB" // alternatively, set `limit_percentage` and `spike_limit_percentage`
+
+		output {
+			metrics = [otelcol.processor.batch.default.input]
+			traces  = [otelcol.processor.batch.default.input]
+		}
+	}
+
+	// otelcol.processor.batch must run after components which can drop telemetry (e.g. otelcol.processor.memory_limiter).
+	otelcol.processor.batch "default" {
+		output {
+			metrics = [otelcol.processor.resourcedetection.default.input]
+			traces  = [otelcol.processor.resourcedetection.default.input]
+		}
+	}
+
+	// System and Env resource detection to add new resource attributes
+	otelcol.processor.resourcedetection "default" {
+		detectors = ["env", "system"]
+
+		system {
+			resource_attributes {
+				host.id {
+					enabled = false
+				}
+
+				host.name {
+					enabled = true
+				}
+
+				host.ip {
+					enabled = false
+				}
+
+				os.type {
+					enabled = true
+				}
+
+				os.description {
+					enabled = true
+				}
+			}
+		}
+
+		output {
+			metrics = [otelcol.processor.attributes.default.input]
+			traces  = [otelcol.processor.attributes.default.input]
+		}
+	}
+
+	// Apply custom attributes
+	otelcol.processor.attributes "default" {
+
+		// Inserts a new attribute with a string value
+		action {
+			key    = "test_label"
+			value  = "some_value"
+			action = "insert"
+		}
+
+		output {
+			metrics = [otelcol.processor.transform.default.input]
+			traces  = [otelcol.processor.transform.default.input]
+		}
+	}
+
+	// Applied required transformations before sending to central OTEL endpoint
+	otelcol.processor.transform "default" {
+		error_mode = "ignore"
+
+		trace_statements {
+			context    = "resource"
+			statements = [
+				`keep_keys(attributes, ["service.name", "service.namespace", "cloud.region", "process.command_line"])`,
+				`replace_pattern(attributes["process.command_line"], "password\\=[^\\s]*(\\s?)", "password=***")`,
+				`limit(attributes, 100, [])`,
+				`truncate_all(attributes, 4096)`,
+			]
+		}
+
+		metric_statements {
+			context    = "resource"
+			statements = [
+				`keep_keys(attributes, ["host.name"])`,
+				`truncate_all(attributes, 4096)`,
+			]
+		}
+
+		metric_statements {
+			context    = "datapoint"
+			statements = [
+				`limit(attributes, 100, ["host.name"])`,
+				`truncate_all(attributes, 4096)`,
+				`set(attributes["test_transform_meraki_id"], resource.attributes["host.name"])`,
+			]
+		}
+
+		output {
+			metrics = [otelcol.exporter.otlp.default.input]
+			traces  = [otelcol.exporter.otlp.default.input]
+		}
+	}
+
+	// -- EXPORTERS
+	otelcol.exporter.otlp "default" {
+		client {
+			endpoint = argument.otel_endpoint.value
+
+			tls {
+				insecure             = true
+				insecure_skip_verify = true
+			}
+		}
+	}
+}
