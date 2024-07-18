@@ -30,6 +30,7 @@ declare "edge" {
   // *** Grafana Alloy Metamonitoring ************************************************
   prometheus.exporter.self "alloy" {}
 
+/*
   prometheus.scrape "alloy" {
     targets    = prometheus.exporter.self.alloy.targets
     scrape_interval = "30s"
@@ -49,7 +50,7 @@ declare "edge" {
       replacement = "integrations/alloy/metrics"
     }
   }
-
+*/
 	// -- ENDPOINTS
 	otelcol.receiver.otlp "default" {
 		grpc {
