@@ -25,6 +25,31 @@ declare "edge" {
     default = "meraki.com"
 	}
 
+  // -- EXPORTERS
+  
+  // *** Grafana Alloy Metamonitoring ************************************************
+  prometheus.exporter.self "alloy" {}
+
+  prometheus.scrape "alloy" {
+    targets    = prometheus.exporter.self.alloy.targets
+    scrape_interval = "30s"
+    scrape_timeout = "5s"
+
+    forward_to = [prometheus.relabel.alloy.receiver]
+  }
+
+  prometheus.relabel "alloy" {
+    forward_to = [otelcol.receiver.prometheus.default.receiver]
+
+    // replace job name
+    rule {
+      action = "replace"
+      source_labels = ["job"]
+      target_label = "job"
+      replacement = "integrations/alloy/metrics"
+    }
+  }
+  
 	// -- ENDPOINTS
 	otelcol.receiver.otlp "default" {
 		grpc {
