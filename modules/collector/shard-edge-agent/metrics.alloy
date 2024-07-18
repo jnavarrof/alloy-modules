@@ -14,6 +14,16 @@ declare "edge" {
 		optional = true
 		default  = "grafana-alloy.obs-grafana-agent:4317"
 	}
+	
+  argument "environment" {
+    comment = "Environment where this collector is running e.g. (dev/staging/prod)"
+    default = "dev"
+	}
+
+  argument "cluster" {
+    comment = "Cluster where this collector is running. This will add a cluster attribute with this value to all metrics/traces"
+    default = "meraki.com"
+	}
 
 	// -- ENDPOINTS
 	otelcol.receiver.otlp "default" {
@@ -97,10 +107,16 @@ declare "edge" {
 	// Apply custom attributes
 	otelcol.processor.attributes "default" {
 
-		// Inserts a new attribute with a string value
+		// Inserts environment and cluster attributes
 		action {
-			key    = "test_label"
-			value  = "some_value"
+			key    = "env"
+			value  = argument.environment.value
+			action = "insert"
+		}
+
+		action {
+			key    = "cluster"
+			value  = argument.cluster.value
 			action = "insert"
 		}
 
@@ -121,6 +137,8 @@ declare "edge" {
 				`replace_pattern(attributes["process.command_line"], "password\\=[^\\s]*(\\s?)", "password=***")`,
 				`limit(attributes, 100, [])`,
 				`truncate_all(attributes, 4096)`,
+				`set(attributes["meraki_host_id"], attributes["host.name"])`,
+				`replace_pattern(attributes["meraki_host_id"], "\\.meraki\\.*$", "")`,
 			]
 		}
 
@@ -137,7 +155,8 @@ declare "edge" {
 			statements = [
 				`limit(attributes, 100, ["host.name"])`,
 				`truncate_all(attributes, 4096)`,
-				`set(attributes["test_transform_meraki_id"], resource.attributes["host.name"])`,
+				`set(attributes["meraki_host_id"], resource.attributes["host.name"])`,
+				`replace_pattern(attributes["meraki_host_id"], "\\.meraki\\.*$", "")`,
 			]
 		}
 
