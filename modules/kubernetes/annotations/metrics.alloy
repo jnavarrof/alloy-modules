@@ -1,3 +1,5 @@
+//TODO: enable remove repository for custom modules
+
 /*
 Module: job-annotation-scrape
 Description: Scrapes targets for metrics based on annotations
@@ -84,7 +86,21 @@ in which a different job name is required because of a set of dashboards, rules,
 which will override the default value:
 
   metrics.grafana.com/job: integrations/kubernetes/kube-state-metrics
+
+each target can be assigned to a specific team by setting the `metrics.grafana.com/team` annotation. This annotation is required for
+a target to be scraped, ensuring that only annotated resources are included in the metrics collection process. Additionally,
+the team annotation value will be added as a `team` label to all metrics collected from the target, enabling per-team filtering
+and analysis in downstream systems.
+
+metrics.grafana.com/team: team-name
+
+Example Annotation:
+  metrics.grafana.com/team: sre-observability
+
+If a target does not have this annotation, it will be dropped by the relabeling configuration to ensure only resources explicitly
+assigned to a team are scraped.
 */
+
 declare "kubernetes" {
   argument "role" {
     comment = "The role to use when looking for targets to scrape via annotations, can be: endpoints, service, pod (default: endpoints)"
@@ -246,6 +262,16 @@ declare "kubernetes" {
       action = "drop"
       source_labels = ["__meta_kubernetes_pod_container_init"]
       regex = "^(true)$"
+    }
+
+    // Drop targets without the "team" annotation
+    rule {
+      action = "drop"
+      source_labels = [
+        "__meta_kubernetes_" + argument.role.value + "_annotation_metrics_grafana_com_team",
+        "__meta_kubernetes_" + argument.__service_role.value + "_annotation_metrics_grafana_com_team"
+      ]
+      regex = "^$"
     }
 
     // allow resources to declare their metrics the tenant their metrics should be sent to,
@@ -487,6 +513,16 @@ declare "kubernetes" {
       replacement = "kubernetes"
       target_label = "source"
     }
+
+    // Set the "team" annotation as a label for all metrics
+    rule {
+      action = "replace"
+      source_labels = [
+        "__meta_kubernetes_" + argument.role.value + "_annotation_metrics_grafana_com_team",
+        "__meta_kubernetes_" + argument.__service_role.value + "_annotation_metrics_grafana_com_team"
+      ]
+      target_label = "team"
+    }
   }
 
   export "output" {
@@ -596,5 +632,4 @@ declare "metrics" {
       regex = coalesce(argument.drop_metrics.value, "")
     }
   }
-
 }
