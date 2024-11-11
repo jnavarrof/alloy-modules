@@ -197,6 +197,16 @@ declare "kubernetes" {
     /****************************************************************************************************************
     * Handle Targets to Keep or Drop
     ****************************************************************************************************************/
+    // Drop targets without the "team" annotation
+    rule {
+      action = "drop"
+      source_labels = [
+        "__meta_kubernetes_" + argument.role.value + "_annotation_metrics_grafana_com_team",
+        "__meta_kubernetes_" + argument.__service_role.value + "_annotation_metrics_grafana_com_team"
+      ]
+      regex = "^$"
+    }
+
     // allow resources to declare their metrics scraped or not
     // Example Annotation:
     //   metrics.grafana.com/scrape: false
@@ -264,14 +274,14 @@ declare "kubernetes" {
       regex = "^(true)$"
     }
 
-    // Drop targets without the "team" annotation
+    // set the "team" label for targets with a team annotation
     rule {
-      action = "drop"
+      action = "replace"
       source_labels = [
         "__meta_kubernetes_" + argument.role.value + "_annotation_metrics_grafana_com_team",
         "__meta_kubernetes_" + argument.__service_role.value + "_annotation_metrics_grafana_com_team"
       ]
-      regex = "^$"
+      target_label = "team"
     }
 
     // allow resources to declare their metrics the tenant their metrics should be sent to,
@@ -512,16 +522,6 @@ declare "kubernetes" {
       action = "replace"
       replacement = "kubernetes"
       target_label = "source"
-    }
-
-    // Set the "team" annotation as a label for all metrics
-    rule {
-      action = "replace"
-      source_labels = [
-        "__meta_kubernetes_" + argument.role.value + "_annotation_metrics_grafana_com_team",
-        "__meta_kubernetes_" + argument.__service_role.value + "_annotation_metrics_grafana_com_team"
-      ]
-      target_label = "team"
     }
   }
 
